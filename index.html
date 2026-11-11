@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Focus Timer — Pomodoro</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #0f172a; color: #f1f5f9; padding: 24px;
+  }
+  h1 { font-size: 1.4rem; letter-spacing: .08em; text-transform: uppercase; color: #94a3b8; margin-bottom: 8px; }
+  #taskInput {
+    background: transparent; border: none; border-bottom: 2px solid #334155;
+    color: #f1f5f9; font-size: 1.1rem; text-align: center; padding: 6px 10px;
+    width: min(420px, 90vw); outline: none; margin-bottom: 28px;
+  }
+  #taskInput:focus { border-color: #f43f5e; }
+  .ring-wrap { position: relative; width: min(340px, 85vw); aspect-ratio: 1; }
+  svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: #1e293b; stroke-width: 12; }
+  .ring-fg { fill: none; stroke: #f43f5e; stroke-width: 12; stroke-linecap: round;
+    transition: stroke-dashoffset .3s linear; }
+  .ring-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center; padding: 20px;
+  }
+  #modeLabel { font-size: .9rem; letter-spacing: .15em; text-transform: uppercase; color: #94a3b8; }
+  #timeLabel { font-size: 3.6rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  #taskLabel { font-size: 1rem; color: #cbd5e1; max-width: 80%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  #roundLabel { margin-top: 6px; font-size: .85rem; color: #64748b; }
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin: 26px 0 14px; }
+  .presets button, .controls button {
+    background: #1e293b; color: #e2e8f0; border: 1px solid #334155;
+    border-radius: 999px; padding: 8px 16px; font-size: .95rem; cursor: pointer;
+  }
+  .presets button.active { background: #f43f5e; border-color: #f43f5e; color: #fff; }
+  .presets button:hover, .controls button:hover { border-color: #f43f5e; }
+  .adjust { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; color: #94a3b8; }
+  .adjust button {
+    width: 32px; height: 32px; border-radius: 50%; border: 1px solid #334155;
+    background: #1e293b; color: #e2e8f0; font-size: 1.1rem; cursor: pointer;
+  }
+  .controls { display: flex; gap: 12px; margin-bottom: 22px; }
+  .controls button.primary { background: #f43f5e; border-color: #f43f5e; color: #fff; font-weight: 600; }
+  .toggles { display: flex; gap: 20px; color: #94a3b8; font-size: .9rem; margin-bottom: 20px; }
+  .toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  #stats { display: flex; gap: 28px; color: #94a3b8; font-size: .9rem; }
+  #stats b { color: #f1f5f9; font-size: 1.1rem; }
+  .hint { margin-top: 18px; font-size: .8rem; color: #475569; }
+  @media (prefers-color-scheme: light) {
+    body { background: #f8fafc; color: #0f172a; }
+    h1 { color: #64748b; }
+    #taskInput { color: #0f172a; border-color: #cbd5e1; }
+    .ring-bg { stroke: #e2e8f0; }
+    .presets button, .controls button { background: #fff; color: #0f172a; border-color: #cbd5e1; }
+    .adjust button { background: #fff; color: #0f172a; border-color: #cbd5e1; }
+    #taskLabel { color: #475569; }
+    #stats b { color: #0f172a; }
+  }
+</style>
+</head>
+<body>
+  <h1>Focus Timer</h1>
+  <input id="taskInput" type="text" placeholder="What are you focusing on?" maxlength="60">
+  <div class="ring-wrap">
+    <svg viewBox="0 0 200 200">
+      <circle class="ring-bg" cx="100" cy="100" r="88"></circle>
+      <circle class="ring-fg" id="ringFg" cx="100" cy="100" r="88"></circle>
+    </svg>
+    <div class="ring-center">
+      <div id="modeLabel">Focus</div>
+      <div id="timeLabel">25:00</div>
+      <div id="taskLabel"></div>
+      <div id="roundLabel">Round 1 of 4</div>
+    </div>
+  </div>
+
+  <div class="presets" id="presets">
+    <button data-min="15">15 min</button>
+    <button data-min="25" class="active">25 min</button>
+    <button data-min="50">50 min</button>
+    <button data-min="90">90 min</button>
+  </div>
+  <div class="adjust">
+    <button id="minusBtn" title="Shorter">−</button>
+    <span id="customLabel">25 minutes</span>
+    <button id="plusBtn" title="Longer">+</button>
+  </div>
+  <div class="controls">
+    <button id="startBtn" class="primary">Start</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+  <div class="toggles">
+    <label><input type="checkbox" id="autoBreak" checked> Auto-start break</label>
+    <label><input type="checkbox" id="soundOn" checked> End sound</label>
+  </div>
+  <div id="stats">
+    <span>Completed: <b id="doneCount">0</b></span>
+    <span>Focus time: <b id="focusMins">0 min</b></span>
+    <span>Breaks: <b id="breakCount">0</b></span>
+  </div>
+  <div class="hint">Space = start / pause &nbsp;·&nbsp; R = reset</div>
+
+<script>
+(function () {
+  const CIRC = 2 * Math.PI * 88;
+  const ringFg = document.getElementById('ringFg');
+  const timeLabel = document.getElementById('timeLabel');
+  const modeLabel = document.getElementById('modeLabel');
+  const taskLabel = document.getElementById('taskLabel');
+  const roundLabel = document.getElementById('roundLabel');
+  const startBtn = document.getElementById('startBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const taskInput = document.getElementById('taskInput');
+  const customLabel = document.getElementById('customLabel');
+  const autoBreak = document.getElementById('autoBreak');
+  const soundOn = document.getElementById('soundOn');
+  const doneCount = document.getElementById('doneCount');
+  const focusMins = document.getElementById('focusMins');
+  const breakCount = document.getElementById('breakCount');
+
+  const SHORT_BREAK = 5 * 60, LONG_BREAK = 15 * 60;
+  let focusLen = 25 * 60, remaining = focusLen, mode = 'focus';
+  let round = 1, running = false, timer = null;
+  let done = 0, focusTotal = 0, breaks = 0, audioCtx = null;
+
+  ringFg.style.strokeDasharray = CIRC;
+  ringFg.style.strokeDashoffset = 0;
+
+  function fmt(s) {
+    return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+  function render() {
+    timeLabel.textContent = fmt(remaining);
+    const total = mode === 'focus' ? focusLen : (mode === 'short' ? SHORT_BREAK : LONG_BREAK);
+    ringFg.style.strokeDashoffset = CIRC * (1 - remaining / total);
+    ringFg.style.stroke = mode === 'focus' ? '#f43f5e' : (mode === 'short' ? '#22c55e' : '#38bdf8');
+    modeLabel.textContent = mode === 'focus' ? 'Focus' : (mode === 'short' ? 'Short Break' : 'Long Break');
+    roundLabel.textContent = mode === 'focus' ? ('Round ' + round + ' of 4') : (mode === 'short' ? 'Take a breather' : 'Long rest — well earned');
+    taskLabel.textContent = taskInput.value.trim();
+    customLabel.textContent = (focusLen / 60) + ' minutes';
+    startBtn.textContent = running ? 'Pause' : 'Start';
+  }
+  function beep() {
+    if (!soundOn.checked) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.35, 0.7].forEach(function (delay) {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.connect(g); g.connect(audioCtx.destination);
+        o.frequency.value = 880; g.gain.value = 0.15;
+        o.start(audioCtx.currentTime + delay);
+        o.stop(audioCtx.currentTime + delay + 0.3);
+      });
+    } catch (e) { /* audio unavailable */ }
+  }
+  function tick() {
+    remaining--;
+    if (remaining <= 0) {
+      clearInterval(timer); running = false; beep();
+      if (mode === 'focus') {
+        done++; focusTotal += focusLen / 60;
+        doneCount.textContent = done;
+        focusMins.textContent = Math.round(focusTotal) + ' min';
+        if (round % 4 === 0) { mode = 'long'; remaining = LONG_BREAK; }
+        else { mode = 'short'; remaining = SHORT_BREAK; }
+        breaks++; breakCount.textContent = breaks;
+        if (autoBreak.checked) { start(); }
+      } else {
+        if (mode === 'long') round = 1; else round++;
+        mode = 'focus'; remaining = focusLen;
+      }
+    }
+    render();
+  }
+  function start() {
+    if (running) return;
+    running = true;
+    timer = setInterval(tick, 1000);
+    render();
+  }
+  function pause() { running = false; clearInterval(timer); render(); }
+  function reset() {
+    pause(); mode = 'focus'; remaining = focusLen; render();
+  }
+  startBtn.addEventListener('click', function () { running ? pause() : start(); });
+  resetBtn.addEventListener('click', reset);
+  taskInput.addEventListener('input', render);
+  document.getElementById('presets').addEventListener('click', function (e) {
+    const b = e.target.closest('button'); if (!b) return;
+    document.querySelectorAll('#presets button').forEach(function (x) { x.classList.remove('active'); });
+    b.classList.add('active');
+    focusLen = parseInt(b.dataset.min, 10) * 60;
+    reset();
+  });
+  document.getElementById('minusBtn').addEventListener('click', function () {
+    if (focusLen > 60) { focusLen -= 60; reset(); }
+  });
+  document.getElementById('plusBtn').addEventListener('click', function () {
+    if (focusLen < 180 * 60) { focusLen += 60; reset(); }
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.target === taskInput) return;
+    if (e.code === 'Space') { e.preventDefault(); running ? pause() : start(); }
+    if (e.key === 'r' || e.key === 'R') reset();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
